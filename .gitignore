@@ -1,0 +1,4 @@
+/dockersentinel
+*.db
+*.db-wal
+*.db-shm
