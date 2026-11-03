@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/sudakevych-andrii/dockersentinel/internal/docker"
+	"github.com/sudakevych-andrii/dockersentinel/internal/monitor"
 	"github.com/sudakevych-andrii/dockersentinel/internal/projects"
 )
 
@@ -57,10 +58,15 @@ func newStatusCmd(gopts *options) *cobra.Command {
 }
 
 func runStatus(ctx context.Context, w io.Writer, gopts *options, opts *statusOptions) error {
+	cfg, _, err := loadConfig(gopts)
+	if err != nil {
+		return err
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, dockerTimeout)
 	defer cancel()
 
-	dc, info, err := connect(ctx, gopts.host)
+	dc, info, err := connect(ctx, cfg.Docker.Host)
 	if err != nil {
 		return err
 	}
@@ -70,6 +76,8 @@ func runStatus(ctx context.Context, w io.Writer, gopts *options, opts *statusOpt
 	if err != nil {
 		return err
 	}
+
+	containers = monitor.NewFilter(cfg).Apply(containers)
 
 	selected, missing := projects.Select(projects.Group(containers), opts.projects)
 	if len(missing) > 0 {

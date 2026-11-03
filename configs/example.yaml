@@ -1,0 +1,75 @@
+# DockerSentinel configuration example.
+#
+# Every key is optional: a missing key keeps its default value.
+# Settings are layered: defaults → project → service (zero/missing = inherit).
+#
+# Lookup order when --config is not given:
+#   ./dockersentinel.yaml, then ~/.config/dockersentinel/config.yaml.
+# Check a file with: dockersentinel config validate --config <file>
+
+docker:
+  # Empty means DOCKER_HOST or unix:///var/run/docker.sock.
+  host: unix:///var/run/docker.sock
+
+monitoring:
+  # all        - every container of the Docker Engine
+  # projects   - only Compose projects listed in the "projects" section
+  # containers - only containers listed in monitoring.containers
+  mode: all
+  interval: 5s
+  max_concurrent_checks: 10
+  # containers: [redis]      # used by mode: containers
+  exclude:
+    containers: [dockersentinel]
+    projects: []
+
+defaults:
+  health:
+    type: docker              # docker | http | tcp
+    interval: 15s
+    timeout: 3s               # must be less than interval
+    retries: 3
+  thresholds:
+    cpu_percent: 80           # can exceed 100 on multi-core hosts
+    memory_percent: 90        # percent of the container memory limit
+    consecutive: 3            # exceedances in a row before an incident
+  recovery:
+    enabled: false            # automatic restarts are opt-in
+    max_restarts: 3
+    window: 10m
+    cooldown: 60s
+
+projects:
+  ecommerce:
+    enabled: true
+    services:
+      backend:
+        health:
+          type: http
+          # The address must be reachable from the host, not from inside the container.
+          url: http://localhost:8080/health
+          expected_status: 200
+        recovery:
+          enabled: true
+          max_restarts: 3
+          window: 10m
+          cooldown: 60s
+      postgres:
+        health:
+          type: tcp
+          address: localhost:5432
+        # Stateful services keep recovery disabled (inherited from defaults).
+
+# Containers without Compose labels, keyed by container name.
+standalone:
+  redis:
+    health:
+      type: tcp
+      address: localhost:6379
+
+storage:
+  path: ./dockersentinel.db
+  retention: 168h             # how long detailed check results are kept
+
+logging:
+  level: info                 # debug | info | warn | error

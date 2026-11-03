@@ -24,9 +24,14 @@ func newWatchCmd(gopts *options) *cobra.Command {
 }
 
 func runWatch(ctx context.Context, logOut io.Writer, gopts *options) error {
-	log := slog.New(slog.NewTextHandler(logOut, nil))
+	cfg, path, err := loadConfig(gopts)
+	if err != nil {
+		return err
+	}
 
-	dc, err := docker.NewClient(gopts.host)
+	log := slog.New(slog.NewTextHandler(logOut, &slog.HandlerOptions{Level: cfg.LogLevel()}))
+
+	dc, err := docker.NewClient(cfg.Docker.Host)
 	if err != nil {
 		return err
 	}
@@ -41,8 +46,8 @@ func runWatch(ctx context.Context, logOut io.Writer, gopts *options) error {
 		return err
 	}
 
-	log.Info("watch started")
-	monitor.NewDiscovery(dc, docker.NewInventory(), log).Run(ctx)
+	log.Info("watch started", "config", displayPath(path), "mode", cfg.Monitoring.Mode)
+	monitor.NewDiscovery(dc, docker.NewInventory(), monitor.NewFilter(cfg), log).Run(ctx)
 	log.Info("watch stopped")
 
 	return nil

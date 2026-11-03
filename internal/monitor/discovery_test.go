@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sudakevych-andrii/dockersentinel/internal/config"
 	"github.com/sudakevych-andrii/dockersentinel/internal/docker"
 )
 
@@ -45,7 +46,7 @@ func containerEvent(id string, action docker.Action) docker.Event {
 }
 
 func newTestDiscovery(src *fakeSource) *Discovery {
-	return NewDiscovery(src, docker.NewInventory(), slog.New(slog.DiscardHandler))
+	return NewDiscovery(src, docker.NewInventory(), nil, slog.New(slog.DiscardHandler))
 }
 
 func inventoryNames(d *Discovery) string {
@@ -126,5 +127,27 @@ func TestDiscoveryRunStopsWhenEventsClose(t *testing.T) {
 	}
 	if got := inventoryNames(d); got != "[api]" {
 		t.Errorf("inventory = %s, want [api]", got)
+	}
+}
+
+func TestDiscoveryFilter(t *testing.T) {
+	src := &fakeSource{containers: map[string]docker.Container{
+		"a": ctr("a", "api", docker.StateRunning),
+		"s": ctr("s", "dockersentinel", docker.StateRunning),
+	}}
+	cfg := config.Default()
+	cfg.Monitoring.Exclude.Containers = []string{"dockersentinel", "tmp"}
+	d := NewDiscovery(src, docker.NewInventory(), NewFilter(cfg), slog.New(slog.DiscardHandler))
+	ctx := context.Background()
+
+	d.handle(ctx, docker.Event{Kind: docker.EventConnected})
+	if got := inventoryNames(d); got != "[api]" {
+		t.Fatalf("after sync: %s, want [api] (excluded container must be skipped)", got)
+	}
+
+	src.containers["t"] = ctr("t", "tmp", docker.StateRunning)
+	d.handle(ctx, containerEvent("t", docker.ActionStart))
+	if got := inventoryNames(d); got != "[api]" {
+		t.Errorf("after event for excluded container: %s, want [api]", got)
 	}
 }

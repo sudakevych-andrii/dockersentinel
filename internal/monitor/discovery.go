@@ -26,13 +26,15 @@ type ContainerSource interface {
 type Discovery struct {
 	src    ContainerSource
 	inv    *docker.Inventory
+	filter Filter
 	log    *slog.Logger
 	synced bool // the first resync is done
 }
 
-// NewDiscovery creates a Discovery that writes into inv.
-func NewDiscovery(src ContainerSource, inv *docker.Inventory, log *slog.Logger) *Discovery {
-	return &Discovery{src: src, inv: inv, log: log}
+// NewDiscovery creates a Discovery that writes monitored containers into inv.
+// A nil filter monitors every container.
+func NewDiscovery(src ContainerSource, inv *docker.Inventory, filter Filter, log *slog.Logger) *Discovery {
+	return &Discovery{src: src, inv: inv, filter: filter, log: log}
 }
 
 // Run processes Docker events until ctx is cancelled.
@@ -64,6 +66,7 @@ func (d *Discovery) resync(ctx context.Context) {
 		d.log.Error("resync failed", "err", err)
 		return
 	}
+	containers = d.filter.Apply(containers)
 
 	added, removed := d.inv.Replace(containers)
 
@@ -103,6 +106,11 @@ func (d *Discovery) apply(ctx context.Context, ev docker.Event) {
 	}
 	if err != nil {
 		d.log.Warn("refresh container failed", "id", docker.ShortID(ev.ContainerID), "action", ev.Action, "err", err)
+		return
+	}
+
+	if !d.filter.Match(c) {
+		d.remove(c.ID) // e.g. excluded; drop it if it was monitored before
 		return
 	}
 
